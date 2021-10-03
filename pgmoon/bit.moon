@@ -1,4 +1,4 @@
-local rshift, lshift, band, ok, _
+local rshift, lshift, band, bxor, ok, _
 local string_loader
 
 
@@ -60,11 +60,10 @@ if ok then
     end
   ]])))
 else
-  import rshift, lshift, band from require "bit"
-
+  import rshift, lshift, band, bxor from require "bit"
 return {
   rshift: rshift
   lshift: lshift
-  band: band
+  band: band,
+  bxor: bxor
 }
-

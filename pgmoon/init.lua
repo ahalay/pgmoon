@@ -4,8 +4,7 @@ insert = table.insert
 local rshift, lshift, band, bxor
 do
   local _obj_0 = require("pgmoon.bit")
-  rshift, lshift, band = _obj_0.rshift, _obj_0.lshift, _obj_0.band
-  bxor = _obj_0.bxor
+  rshift, lshift, band, bxor = _obj_0.rshift, _obj_0.lshift, _obj_0.band, _obj_0.bxor
 end
 local unpack = table.unpack or unpack
 local VERSION = "1.12.0"
@@ -280,26 +279,20 @@ do
       return self:check_auth()
     end,
     scram_sha_256_auth = function(self, msg)
+      local openssl_rand
+      openssl_rand = require("openssl.rand").openssl_rand
       assert(self.password, "missing password, required for connect")
-
-      local openssl_rand = require("openssl.rand")
-
-      -- '18' is the number set by postgres on the server side
       local rand_bytes, err = openssl_rand.bytes(18)
-
       if not (rand_bytes) then
         return nil, "failed to generate random bytes: " .. tostring(err)
       end
-
       local c_nonce = ngx.encode_base64(rand_bytes)
       local nonce = "r=" .. c_nonce
       local saslname = ""
       local username = "n=" .. saslname
       local client_first_message_bare = username .. "," .. nonce
-
       local plus = false
       local bare = false
-
       if msg:match("SCRAM%-SHA%-256%-PLUS") then
         plus = true
       elseif msg:match("SCRAM%-SHA%-256") then
@@ -307,12 +300,10 @@ do
       else
         return nil, "unsupported SCRAM mechanism name: " .. tostring(msg)
       end
-
       local gs2_cbind_flag
       local gs2_header
       local cbind_input
       local mechanism_name
-
       if bare == true then
         gs2_cbind_flag = "n"
         gs2_header = gs2_cbind_flag .. ",,"
@@ -323,235 +314,184 @@ do
         gs2_cbind_flag = "p=" .. cb_name
         gs2_header = gs2_cbind_flag .. ",,"
         mechanism_name = "SCRAM-SHA-256-PLUS" .. NULL
-
-        local function be_tls_get_certificate_hash()
+        local be_tls_get_certificate_hash
+        be_tls_get_certificate_hash = function()
           local signature
           local pem
-
           if self.sock_type == "luasocket" then
             local server_cert = self.sock:getpeercertificate()
-
             pem = server_cert:pem()
-
             signature = server_cert:getsignaturename()
           else
-            local ssl = require("resty.openssl.ssl").from_socket(self.sock)
+            local ssl
+            ssl = require(("resty.openssl.ssl").from_socket(self.sock)).ssl
             local server_cert = ssl:get_peer_certificate()
-
             pem = server_cert:to_PEM()
-
             signature = server_cert:get_signature_name()
           end
-
           signature = signature:lower()
-
           if signature:match("md5") or signature:match("sha1") then
             signature = "sha256"
           end
-
-          local openssl_x509 = require("openssl.x509").new(pem, "PEM")
-
-          local openssl_x509_digest, err = openssl_x509:digest(signature, "s")
-
+          local openssl_x509
+          openssl_x509 = require(("openssl.x509").new(pem, "PEM")).openssl_x509
+          local openssl_x509_digest
+          openssl_x509_digest, err = openssl_x509:digest(signature, "s")
           if not (openssl_x509_digest) then
             return nil, tostring(err)
           end
-
           return openssl_x509_digest
         end
-
         local cbind_data = be_tls_get_certificate_hash()
-
         cbind_input = gs2_header .. cbind_data
       end
-
       local client_first_message = gs2_header .. client_first_message_bare
-
       self:send_message(MSG_TYPE.password, {
         mechanism_name,
         self:encode_int(#client_first_message),
-        client_first_message,
+        client_first_message
       })
-
-      local t, msg = self:receive_message()
-
+      local t
+      t, msg = self:receive_message()
       if not (t) then
         return nil, msg
       end
-
       local server_first_message = msg:sub(5)
-
       local int32 = self:decode_int(msg, 4)
-
       if int32 == nil or int32 ~= 11 then
         return nil, "server_first_message error: " .. msg
       end
-
       local channel_binding = "c=" .. ngx.encode_base64(cbind_input)
-
-      local nonce = server_first_message:match("([^,]+)")
-
+      nonce = server_first_message:match("([^,]+)")
       if not (nonce) then
         return nil, "malformed server message (nonce)"
       end
-
       local client_final_message_without_proof = channel_binding .. "," .. nonce
-
-      local function hmac(key, str)
-        local openssl_hmac = require("openssl.hmac")
-        local hmac, err = openssl_hmac.new(key, "sha256")
-
+      local hmac
+      hmac = function(key, str)
+        local openssl_hmac
+        openssl_hmac = require("openssl.hmac").openssl_hmac
+        hmac, err = openssl_hmac.new(key, "sha256")
         if not (hmac) then
           return nil, tostring(err)
         end
-
         hmac:update(str)
-
-        local final_hmac, err = hmac:final()
-
+        local final_hmac
+        final_hmac, err = hmac:final()
         if not (final_hmac) then
           return nil, tostring(err)
         end
-
         return final_hmac
       end
-
-      local function h(str)
-        local openssl_digest, err = require("openssl.digest").new("sha256")
-
+      local h
+      h = function(str)
+        local openssl_digest
+        do
+          local _obj_0 = require(("openssl.digest").new("sha256"))
+          openssl_digest, err = _obj_0.openssl_digest, _obj_0.err
+        end
         if not (openssl_digest) then
           return nil, tostring(err)
         end
-
         openssl_digest:update(str)
-
-        local digest, err = openssl_digest:final()
-
+        local digest
+        digest, err = openssl_digest:final()
         if not (digest) then
           return nil, tostring(err)
         end
-
         return digest
       end
-
-      local function xor(a, b)
-        local result = {}
-
+      local xor
+      xor = function(a, b)
+        local result = { }
         for i = 1, #a do
           local x = a:byte(i)
           local y = b:byte(i)
-
-          if not (x) or not (y) then
-            return
+          if not (x and y) then
+            return 
           end
-
           result[i] = string.char(bxor(x, y))
         end
-
         return table.concat(result)
       end
-
-      local function hi(str, salt, i)
-        local openssl_kdf = require("openssl.kdf")
-
+      local hi
+      hi = function(str, salt, i)
+        local openssl_kdf
+        openssl_kdf = require("openssl.kdf").openssl_kdf
         salt = ngx.decode_base64(salt)
-
-        local key, err = openssl_kdf.derive({
+        local key
+        key, err = openssl_kdf.derive({
           type = "PBKDF2",
           md = "sha256",
           salt = salt,
           iter = i,
           pass = str,
-          outlen = 32 -- our H() produces a 32 byte hash value (SHA-256)
+          outlen = 32
         })
-
         if not (key) then
           return nil, "failed to derive pbkdf2 key: " .. tostring(err)
         end
-
         return key
       end
-
       local salt = server_first_message:match(",s=([^,]+)")
-
       if not (salt) then
         return nil, "malformed server message (salt)"
       end
-
       local i = server_first_message:match(",i=(.+)")
-
       if not (i) then
         return nil, "malformed server message (iteraton count)"
       end
-
       if tonumber(i) < 4096 then
         return nil, "the iteration-count sent by the server is less than 4096"
       end
-
-      local salted_password, err = hi(self.password, salt, tonumber(i))
-
+      local salted_password
+      salted_password, err = hi(self.password, salt, tonumber(i))
       if not (salted_password) then
         return nil, tostring(err)
       end
-
-      local client_key, err = hmac(salted_password, "Client Key")
-
+      local client_key
+      client_key, err = hmac(salted_password, "Client Key")
       if not (client_key) then
         return nil, tostring(err)
       end
-
-      local stored_key, err = h(client_key)
-
+      local stored_key
+      stored_key, err = h(client_key)
       if not (stored_key) then
         return nil, tostring(err)
       end
-
       local auth_message = client_first_message_bare .. "," .. server_first_message .. "," .. client_final_message_without_proof
-
-      local client_signature, err = hmac(stored_key, auth_message)
-
+      local client_signature
+      client_signature, err = hmac(stored_key, auth_message)
       if not (client_signature) then
         return nil, tostring(err)
       end
-
       local proof = xor(client_key, client_signature)
-
       if not (proof) then
         return nil, "failed to generate the client proof"
       end
-
       local client_final_message = client_final_message_without_proof .. "," .. "p=" .. ngx.encode_base64(proof)
-
       self:send_message(MSG_TYPE.password, {
-        client_final_message,
+        client_final_message
       })
-
-      local t, msg = self:receive_message()
-
+      t, msg = self:receive_message()
       if not (t) then
         return nil, msg
       end
-
-      local server_key, err = hmac(salted_password, "Server Key")
-
+      local server_key
+      server_key, err = hmac(salted_password, "Server Key")
       if not (server_key) then
         return nil, tostring(err)
       end
-
-      local server_signature, err = hmac(server_key, auth_message)
-
+      local server_signature
+      server_signature, err = hmac(server_key, auth_message)
       if not (server_signature) then
         return nil, tostring(err)
       end
-
       server_signature = ngx.encode_base64(server_signature)
-
       local sent_server_signature = msg:match("v=([^,]+)")
-
       if server_signature ~= sent_server_signature then
         return nil, "authentication exchange unsuccessful"
       end
-
       return self:check_auth()
     end,
     check_auth = function(self)

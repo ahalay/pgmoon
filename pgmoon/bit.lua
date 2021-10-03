@@ -45,8 +45,7 @@ if ok then
 else
   do
     local _obj_0 = require("bit")
-    rshift, lshift, band = _obj_0.rshift, _obj_0.lshift, _obj_0.band
-    bxor = _obj_0.bxor
+    rshift, lshift, band, bxor = _obj_0.rshift, _obj_0.lshift, _obj_0.band, _obj_0.bxor
   end
 end
 return {
